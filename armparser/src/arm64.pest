@@ -1,0 +1,81 @@
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+COMMENT    = _{ (";" ~ (!NEWLINE ~ ANY)*) | ("//" ~ (!NEWLINE ~ ANY)*) }
+
+// Main Rules
+line = { SOI ~ (directive | label | operation)? ~ EOI }
+
+label = { identifier ~ ":" }
+
+operation = { opcode ~ (operand ~ ("," ~ operand)*)? }
+
+directive = @{ "." ~ identifier | "#" ~ identifier }
+
+operand = {
+    (reglist | shifted_register | register | immediate | address | label_target | indirect | dotlabel | proc_load) ~ writeback?
+}
+
+dotlabel = @{ "." ~ identifier }
+
+reglist        = { "{" ~ (register_item ~ ("," ~ register_item)*) ~ "}" }
+register_item  = { register_range | register }
+register_range = { register ~ "-" ~ register }
+
+indirect = { "[" ~ register ~ ("," ~ offset)? ~ "]" }
+offset   = { immediate | proc_load | register | shifted_register }
+
+immediate = @{ ("#"? ~ imm_value) }
+address   =  { "=" ~ imm_value }
+
+imm_value =  { hex_val | dec_val }
+hex_val   = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+dec_val   = @{ ASCII_DIGIT+ | "-" ~ ASCII_DIGIT+ }
+
+label_target = { identifier | dotlabel }
+
+shifted_register = { register ~ shift_type ~ shift_by? }
+shift_by         = { immediate | register }
+
+// Identifiers and Names
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+opcode     = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+
+proc_load =  { (":" | "#:") ~ mode ~ ":" ~ label_target }
+mode      = @{ ASCII_ALPHA+ }
+
+// Registers
+register = { half_reg | full_reg | float_reg }
+
+float_reg =  { float16 | float32 | double64 }
+float16   = @{ "h" ~ ASCII_DIGIT+ }
+float32   = @{ "s" ~ ASCII_DIGIT+ }
+double64  = @{ "d" ~ ASCII_DIGIT+ }
+
+half_reg  = @{ "w" ~ ASCII_DIGIT+ | "wzr" }
+full_reg  = @{ "x" ~ ASCII_DIGIT+ | "xzr" | named_reg }
+named_reg =  { "sp" | "fp" | "lr" | "xr" }
+
+// Other components
+shift_type = { "lsl" | "lsr" | "asr" | "ror" | "rrx" }
+writeback  = { "!" }
+
+addr_mode = { "IA" | "IB" | "DA" | "DB" }
+
+condition_code = {
+    "EQ"
+  | "NE"
+  | "CS"
+  | "HS"
+  | "CC"
+  | "LO"
+  | "MI"
+  | "PL"
+  | "VS"
+  | "VC"
+  | "HI"
+  | "LS"
+  | "GE"
+  | "LT"
+  | "GT"
+  | "LE"
+  | "AL"
+}
