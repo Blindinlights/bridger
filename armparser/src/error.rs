@@ -8,6 +8,12 @@ pub enum ArmParserError {
     PestError(#[from] pest::error::Error<Rule>),
     #[error("ParseInt error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+    #[error("Invalid register range")]
+    InvalidRegisterRange,
+    #[error("Invalid register type")]
+    InvalidRegisterType,
+    #[error("Invalid opcode")]
+    InvalidOpcode,
 }
 
 pub trait PrintError {

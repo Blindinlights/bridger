@@ -1,0 +1,145 @@
+Pair {
+    rule: line,
+    span: Span {
+        str: "push {x0-x2, sp}\n",
+        start: 0,
+        end: 17,
+    },
+    inner: [
+        Pair {
+            rule: operation,
+            span: Span {
+                str: "push {x0-x2, sp}\n",
+                start: 0,
+                end: 17,
+            },
+            inner: [
+                Pair {
+                    rule: opcode,
+                    span: Span {
+                        str: "push",
+                        start: 0,
+                        end: 4,
+                    },
+                    inner: [],
+                },
+                Pair {
+                    rule: operand,
+                    span: Span {
+                        str: "{x0-x2, sp}",
+                        start: 5,
+                        end: 16,
+                    },
+                    inner: [
+                        Pair {
+                            rule: reglist,
+                            span: Span {
+                                str: "{x0-x2, sp}",
+                                start: 5,
+                                end: 16,
+                            },
+                            inner: [
+                                Pair {
+                                    rule: register_item,
+                                    span: Span {
+                                        str: "x0-x2",
+                                        start: 6,
+                                        end: 11,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: register_range,
+                                            span: Span {
+                                                str: "x0-x2",
+                                                start: 6,
+                                                end: 11,
+                                            },
+                                            inner: [
+                                                Pair {
+                                                    rule: register,
+                                                    span: Span {
+                                                        str: "x0",
+                                                        start: 6,
+                                                        end: 8,
+                                                    },
+                                                    inner: [
+                                                        Pair {
+                                                            rule: full_reg,
+                                                            span: Span {
+                                                                str: "x0",
+                                                                start: 6,
+                                                                end: 8,
+                                                            },
+                                                            inner: [],
+                                                        },
+                                                    ],
+                                                },
+                                                Pair {
+                                                    rule: register,
+                                                    span: Span {
+                                                        str: "x2",
+                                                        start: 9,
+                                                        end: 11,
+                                                    },
+                                                    inner: [
+                                                        Pair {
+                                                            rule: full_reg,
+                                                            span: Span {
+                                                                str: "x2",
+                                                                start: 9,
+                                                                end: 11,
+                                                            },
+                                                            inner: [],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Pair {
+                                    rule: register_item,
+                                    span: Span {
+                                        str: "sp",
+                                        start: 13,
+                                        end: 15,
+                                    },
+                                    inner: [
+                                        Pair {
+                                            rule: register,
+                                            span: Span {
+                                                str: "sp",
+                                                start: 13,
+                                                end: 15,
+                                            },
+                                            inner: [
+                                                Pair {
+                                                    rule: full_reg,
+                                                    span: Span {
+                                                        str: "sp",
+                                                        start: 13,
+                                                        end: 15,
+                                                    },
+                                                    inner: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Pair {
+            rule: EOI,
+            span: Span {
+                str: "",
+                start: 17,
+                end: 17,
+            },
+            inner: [],
+        },
+    ],
+}

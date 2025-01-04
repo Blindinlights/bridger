@@ -1,45 +1,17 @@
 pub mod error;
 pub mod opcode;
+pub mod register;
 #[cfg(test)]
 pub mod tests;
-use error::PrintError;
-use opcode::Opcode;
+use opcode::{Opcode, OPCODES};
 use pest_derive::Parser;
-
-macro_rules! location {
-    () => {
-        concat!(file!(), ":", line!())
-    };
-}
+use register::Register;
 
 #[derive(Parser)]
 #[grammar = "arm64.pest"] // 使用前面定义的pest语法文件
 pub struct ARM64Parser;
 
 // 基础数据类型定义
-#[derive(Debug, Clone, PartialEq)]
-pub enum Register {
-    HalfReg(u8), // w0-w31
-    FullReg(u8), // x0-x31
-    SpecialReg(SpecialRegister),
-    FloatReg(FloatRegister),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FloatRegister {
-    Half(u8),   // h0-h31
-    Single(u8), // s0-s31
-    Double(u8), // d0-d31
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SpecialRegister {
-    SP,  // Stack Pointer
-    FP,  // Frame Pointer
-    LR,  // Link Register
-    XZR, // Zero Register (64-bit)
-    WZR, // Zero Register (32-bit)
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShiftType {
@@ -51,7 +23,7 @@ pub enum ShiftType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Immediate(u64);
+pub struct Immediate(i64);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShiftedRegister {
@@ -73,7 +45,7 @@ pub enum ShiftAmount {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterList {
-    registers: Vec<Register>,
+    pub regs: Vec<Register>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,36 +108,12 @@ pub trait Parse {
         Self: Sized;
 }
 
-impl Parse for Register {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
-        debug_assert_eq!(pair.as_rule(), Rule::register);
-        let inner = pair.into_inner().next().expect("No inner pair");
-        match inner.as_rule() {
-            Rule::half_reg => Ok(Register::HalfReg(inner.as_str()[1..].parse()?)),
-            Rule::full_reg => Ok(Register::FullReg(inner.as_str()[1..].parse()?)),
-            Rule::float_reg => {
-                let inner = inner.into_inner().next().expect("No inner pair");
-
-                let fg = match inner.as_rule() {
-                    Rule::float16 => FloatRegister::Half(inner.as_str()[1..].parse()?),
-                    Rule::float32 => FloatRegister::Single(inner.as_str()[1..].parse()?),
-                    Rule::double64 => FloatRegister::Double(inner.as_str()[1..].parse()?),
-                    _ => unreachable!("Invalid float register"),
-                };
-                Ok(Register::FloatReg(fg))
-            }
-
-            _ => unreachable!("Invalid register"),
-        }
-    }
-}
-
 impl Parse for Immediate {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::immediate);
         fn parse_int(s: &str) -> Result<Immediate, Err> {
             if s.starts_with("0x") {
-                Ok(Immediate(u64::from_str_radix(&s[2..], 16)?))
+                Ok(Immediate(i64::from_str_radix(&s[2..], 16)?))
             } else {
                 Ok(Immediate(s.parse()?))
             }
@@ -278,12 +226,12 @@ impl Parse for RegisterList {
                 Rule::register_range => {
                     let range = RegisterRange::parse(pair).expect("Invalid register range");
                     let list = range.to_reg_list().expect("Invalid register range");
-                    registers.extend(list.registers);
+                    registers.extend(list.regs);
                 }
                 _ => unreachable!("Invalid register list"),
             });
         registers.shrink_to_fit();
-        Ok(RegisterList { registers })
+        Ok(RegisterList { regs: registers })
     }
 }
 
@@ -314,50 +262,36 @@ impl Parse for Operand {
         }
     }
 }
+impl Parse for Opcode {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::opcode);
+        let opcode = OPCODES.get(pair.as_str()).ok_or(Err::InvalidOpcode)?;
+        Ok(Opcode(opcode.0))
+    }
+}
+
+impl Parse for Instruction {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::operation);
+        let mut inner = pair.into_inner();
+        let opcode = Opcode::parse(inner.next().expect("No inner pair"))?;
+        let operands = inner
+            .map(|pair| -> Result<Operand, Err> { Ok(Operand::parse(pair)?) })
+            .collect::<Result<Vec<Operand>, Err>>()?;
+        Ok(Instruction { opcode, operands })
+    }
+}
 
 impl RegisterRange {
     fn to_reg_list(&self) -> Result<RegisterList, Err> {
-        let mut registers = Vec::new();
-        match (&self.start, &self.end) {
-            (Register::FullReg(start), Register::FullReg(end)) => {
-                for i in *start..=*end {
-                    registers.push(Register::FullReg(i));
-                }
-            }
-            (Register::HalfReg(start), Register::HalfReg(end)) => {
-                for i in *start..=*end {
-                    registers.push(Register::HalfReg(i));
-                }
-            }
-            (
-                Register::FloatReg(FloatRegister::Half(start)),
-                Register::FloatReg(FloatRegister::Half(end)),
-            ) => {
-                for i in *start..=*end {
-                    registers.push(Register::FloatReg(FloatRegister::Half(i)));
-                }
-            }
-            (
-                Register::FloatReg(FloatRegister::Single(start)),
-                Register::FloatReg(FloatRegister::Single(end)),
-            ) => {
-                for i in *start..=*end {
-                    registers.push(Register::FloatReg(FloatRegister::Single(i)));
-                }
-            }
-            (
-                Register::FloatReg(FloatRegister::Double(start)),
-                Register::FloatReg(FloatRegister::Double(end)),
-            ) => {
-                for i in *start..=*end {
-                    registers.push(Register::FloatReg(FloatRegister::Double(i)));
-                }
-            }
-
-            _ => {
-                todo!()
-            }
+        let mut registers = Vec::with_capacity(16);
+        if self.start.reg_type != self.end.reg_type {
+            return Err(Err::InvalidRegisterRange);
         }
-        Ok(RegisterList { registers })
+        let reg_type = self.start.reg_type;
+        for i in self.start.reg_num..=self.end.reg_num {
+            registers.push(Register::new(reg_type, i));
+        }
+        Ok(RegisterList { regs: registers })
     }
 }

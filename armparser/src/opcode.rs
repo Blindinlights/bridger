@@ -1,30 +1,49 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Opcode(&'static str);
-macro_rules! opcode {
-    (
-        $(#[$attr:meta])*
-        $name:ident
-    ) => {
-        $(#[$attr])*
-        pub const $name: Opcode = Opcode(stringify!($name));
-    };
-}
-macro_rules! opcodes {
-    (
-        $(
-            $(#[$attr:meta])*
-            $name:ident
-        ),*
-    ) => {
-        $(
-            opcode! {
-                $(#[$attr])*
-                $name
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+macro_rules! define_opcodes {
+    ($($name:ident = $value:expr),* $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct Opcode(pub &'static str);
+
+        impl Opcode {
+            $(
+                pub const $name: Opcode = Opcode($value);
+            )*
+
+            pub fn name(&self) -> &'static str {
+                self.0
             }
-        )*
+        }
+
+        // 创建全局静态HashMap
+        pub static OPCODES: LazyLock<HashMap<&'static str, Opcode>> = LazyLock::new(|| {
+            let mut map = HashMap::new();
+            $(
+                map.insert($value, Opcode::$name);
+            )*
+            map
+        });
     };
 }
 
-opcodes! {
-    ADD, SUB, MUL, DIV, MOD, AND, OR, XOR, NOT, SHL, SHR, ROL, ROR, CMP, TEST, MOV, LDR, STR, JMP, CALL, RET
+define_opcodes! {
+    ADD = "add",
+    SUB = "sub",
+    MUL = "mul",
+    DIV = "div",
+    MOV = "mov",
+    LOAD = "load",
+    STORE = "store",
+    JMP = "jmp",
+
+    STP = "stp",
+
+    B = "b",
+    BL = "bl",
+
+    LI = "li",
+    LDR = "ldr",
+    STR = "str",
+    LDP = "ldp",
 }

@@ -11,7 +11,15 @@ operation = { opcode ~ (operand ~ ("," ~ operand)*)? }
 directive = @{ "." ~ identifier | "#" ~ identifier }
 
 operand = {
-    (reglist | shifted_register | register | immediate | address | label_target | indirect | dotlabel | proc_load) ~ writeback?
+    reglist
+  | shifted_register
+  | register
+  | immediate
+  | address
+  | label_target
+  | indirect
+  | dotlabel
+  | proc_load
 }
 
 dotlabel = @{ "." ~ identifier }
@@ -20,7 +28,7 @@ reglist        = { "{" ~ (register_item ~ ("," ~ register_item)*) ~ "}" }
 register_item  = { register_range | register }
 register_range = { register ~ "-" ~ register }
 
-indirect = { "[" ~ register ~ ("," ~ offset)? ~ "]" }
+indirect = { "[" ~ register ~ ("," ~ offset)? ~ "]" ~ writeback? }
 offset   = { immediate | proc_load | shifted_register | register }
 
 immediate = @{ ("#"? ~ imm_value) }
@@ -56,25 +64,3 @@ named_reg =  { "sp" | "fp" | "lr" | "xr" }
 // Other components
 shift_type = { "lsl" | "lsr" | "asr" | "ror" | "rrx" }
 writeback  = { "!" }
-
-addr_mode = { "IA" | "IB" | "DA" | "DB" }
-
-condition_code = {
-    "EQ"
-  | "NE"
-  | "CS"
-  | "HS"
-  | "CC"
-  | "LO"
-  | "MI"
-  | "PL"
-  | "VS"
-  | "VC"
-  | "HI"
-  | "LS"
-  | "GE"
-  | "LT"
-  | "GT"
-  | "LE"
-  | "AL"
-}

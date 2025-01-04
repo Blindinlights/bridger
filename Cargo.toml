@@ -1,7 +1,8 @@
 [package]
-name = "armparser"
+name = "armtoriscv"
 version = "0.1.0"
 edition = "2021"
-
+[workspace]
+members = ["armparser"]
 [dependencies]
 expect-test = "1.5.1"
