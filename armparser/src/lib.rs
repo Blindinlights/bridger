@@ -1,14 +1,20 @@
 pub mod error;
+pub mod opcode;
 #[cfg(test)]
 pub mod tests;
-
-use pest::{error::Error, Parser};
+use error::PrintError;
+use opcode::Opcode;
 use pest_derive::Parser;
-use std::collections::HashMap;
+
+macro_rules! location {
+    () => {
+        concat!(file!(), ":", line!())
+    };
+}
 
 #[derive(Parser)]
 #[grammar = "arm64.pest"] // 使用前面定义的pest语法文件
-struct ARM64Parser;
+pub struct ARM64Parser;
 
 // 基础数据类型定义
 #[derive(Debug, Clone, PartialEq)]
@@ -45,15 +51,12 @@ pub enum ShiftType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Immediate {
-    Decimal(i64),
-    Hex(u64),
-}
+pub struct Immediate(u64);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShiftedRegister {
     // The register to be shifted
-    register: Register,
+    reg: Register,
     // The type of shift operation to perform (LSL, LSR, ASR, ROR, RRX)
     shift_type: ShiftType,
     // Optional amount to shift by - can be immediate value or register
@@ -63,7 +66,7 @@ pub struct ShiftedRegister {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShiftAmount {
     // Immediate shift amount (constant)
-    Immediate(u32),
+    Immediate(Immediate),
     // Register containing shift amount
     Register(Register),
 }
@@ -114,7 +117,7 @@ pub enum Operand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instruction {
-    opcode: String,
+    opcode: Opcode,
     operands: Vec<Operand>,
 }
 
@@ -125,8 +128,17 @@ pub enum Line {
     Instruction(Instruction),
 }
 type Err = crate::error::ArmParserError;
-impl ARM64Parser {
-    pub(crate) fn parse_register(pair: pest::iterators::Pair<Rule>) -> Result<Register, Err> {
+impl ARM64Parser {}
+
+pub trait Parse {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err>
+    where
+        Self: Sized;
+}
+
+impl Parse for Register {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::register);
         let inner = pair.into_inner().next().expect("No inner pair");
         match inner.as_rule() {
             Rule::half_reg => Ok(Register::HalfReg(inner.as_str()[1..].parse()?)),
@@ -146,18 +158,32 @@ impl ARM64Parser {
             _ => unreachable!("Invalid register"),
         }
     }
-    pub(crate) fn parse_immediate(pair: pest::iterators::Pair<Rule>) -> Result<Immediate, Err> {
+}
+
+impl Parse for Immediate {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::immediate);
+        fn parse_int(s: &str) -> Result<Immediate, Err> {
+            if s.starts_with("0x") {
+                Ok(Immediate(u64::from_str_radix(&s[2..], 16)?))
+            } else {
+                Ok(Immediate(s.parse()?))
+            }
+        }
+
         let literal = pair.as_str();
         let first_char = literal.chars().next().expect("No first char");
         match first_char {
-            '#' => Ok(Immediate::Decimal(literal[1..].parse()?)),
-            '0' => Ok(Immediate::Hex(u64::from_str_radix(&literal[2..], 16)?)),
-            _ => Ok(Immediate::Decimal(literal.parse()?)),
+            '#' => parse_int(&literal[1..]),
+            _ => parse_int(literal),
         }
     }
-    pub(crate) fn parse_shift_type(pair: pest::iterators::Pair<Rule>) -> Result<ShiftType, Err> {
-        let inner = pair.into_inner().next().expect("No inner pair");
-        match inner.as_str() {
+}
+
+impl Parse for ShiftType {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::shift_type);
+        match pair.as_str() {
             "lsl" => Ok(ShiftType::LSL),
             "lsr" => Ok(ShiftType::LSR),
             "asr" => Ok(ShiftType::ASR),
@@ -166,29 +192,172 @@ impl ARM64Parser {
             _ => unreachable!("Invalid shift type"),
         }
     }
-    pub(crate) fn parse_shift_register(
-        pair: pest::iterators::Pair<Rule>,
-    ) -> Result<ShiftedRegister, Err> {
+}
+
+impl Parse for ShiftedRegister {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::shifted_register);
         let mut inner = pair.into_inner();
-        let register = ARM64Parser::parse_register(inner.next().expect("No inner pair"))?;
-        let shift_type = ARM64Parser::parse_shift_type(inner.next().expect("No inner pair"))?;
+        let register = Register::parse(inner.next().expect("No inner pair"))?;
+        let shift_type = ShiftType::parse(inner.next().expect("No inner pair"))?;
         let shift_amount = inner
             .next()
             .map(|pair| -> Result<ShiftAmount, Err> {
                 let inner = pair.into_inner().next().expect("No inner pair");
                 match inner.as_rule() {
-                    Rule::immediate => Ok(ShiftAmount::Immediate(inner.as_str().parse()?)),
-                    Rule::register => {
-                        Ok(ShiftAmount::Register(ARM64Parser::parse_register(inner)?))
-                    }
+                    Rule::immediate => Ok(ShiftAmount::Immediate(Immediate::parse(inner)?)),
+                    Rule::register => Ok(ShiftAmount::Register(Register::parse(inner)?)),
                     _ => unreachable!("Invalid shift amount"),
                 }
             })
             .transpose()?;
         Ok(ShiftedRegister {
-            register,
+            reg: register,
             shift_type,
             shift_amount,
         })
+    }
+}
+
+impl Parse for Offset {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::offset);
+
+        let inner = pair.into_inner().next().expect("No inner pair");
+        match inner.as_rule() {
+            Rule::immediate => Ok(Offset::Immediate(Immediate::parse(inner)?)),
+            Rule::register => Ok(Offset::Register(Register::parse(inner)?)),
+            Rule::shifted_register => Ok(Offset::ShiftedRegister(ShiftedRegister::parse(inner)?)),
+            Rule::proc_load => Ok(Offset::ProcLoad(ProcLoad::parse(inner)?)),
+            _ => unreachable!("Invalid offset"),
+        }
+    }
+}
+
+impl Parse for Indirect {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::indirect);
+        let mut inner = pair.into_inner();
+        let base = Register::parse(inner.next().expect("No inner pair"))?;
+        let offset = inner
+            .next()
+            .map(|pair| -> Result<Offset, Err> { Ok(Offset::parse(pair)?) })
+            .transpose()?;
+        let writeback = inner.next().is_some();
+        Ok(Indirect {
+            base,
+            offset,
+            writeback,
+        })
+    }
+}
+impl Parse for ProcLoad {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::proc_load);
+        let mut inner = pair.into_inner();
+        let mode = inner.next().expect("No inner pair").as_str().to_string();
+        let target = inner.next().expect("No inner pair").as_str().to_string();
+        Ok(ProcLoad { mode, target })
+    }
+}
+
+impl Parse for RegisterList {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::reglist);
+        let mut registers = Vec::with_capacity(30);
+
+        pair.into_inner()
+            .map(|pair| {
+                debug_assert_eq!(pair.as_rule(), Rule::register_item);
+                pair.into_inner().next().expect("No inner pair")
+            })
+            .for_each(|pair| match pair.as_rule() {
+                Rule::register => {
+                    registers.push(Register::parse(pair).expect("Invalid register"));
+                }
+                Rule::register_range => {
+                    let range = RegisterRange::parse(pair).expect("Invalid register range");
+                    let list = range.to_reg_list().expect("Invalid register range");
+                    registers.extend(list.registers);
+                }
+                _ => unreachable!("Invalid register list"),
+            });
+        registers.shrink_to_fit();
+        Ok(RegisterList { registers })
+    }
+}
+
+impl Parse for RegisterRange {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::register_range);
+        let mut inner = pair.into_inner();
+        let start = Register::parse(inner.next().expect("No inner pair"))?;
+        let end = Register::parse(inner.next().expect("No inner pair"))?;
+        Ok(RegisterRange { start, end })
+    }
+}
+
+impl Parse for Operand {
+    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+        debug_assert_eq!(pair.as_rule(), Rule::operand);
+        let inner = pair.into_inner().next().expect("No inner pair");
+        match inner.as_rule() {
+            Rule::register => Ok(Operand::Register(Register::parse(inner)?)),
+            Rule::immediate => Ok(Operand::Immediate(Immediate::parse(inner)?)),
+            Rule::address => Ok(Operand::Address(Immediate::parse(inner)?)),
+            Rule::label_target => Ok(Operand::LabelTarget(inner.as_str().to_string())),
+            Rule::indirect => Ok(Operand::Indirect(Indirect::parse(inner)?)),
+            Rule::reglist => Ok(Operand::RegisterList(RegisterList::parse(inner)?)),
+            Rule::shifted_register => Ok(Operand::ShiftedRegister(ShiftedRegister::parse(inner)?)),
+            Rule::proc_load => Ok(Operand::ProcLoad(ProcLoad::parse(inner)?)),
+            _ => unreachable!("Invalid operand"),
+        }
+    }
+}
+
+impl RegisterRange {
+    fn to_reg_list(&self) -> Result<RegisterList, Err> {
+        let mut registers = Vec::new();
+        match (&self.start, &self.end) {
+            (Register::FullReg(start), Register::FullReg(end)) => {
+                for i in *start..=*end {
+                    registers.push(Register::FullReg(i));
+                }
+            }
+            (Register::HalfReg(start), Register::HalfReg(end)) => {
+                for i in *start..=*end {
+                    registers.push(Register::HalfReg(i));
+                }
+            }
+            (
+                Register::FloatReg(FloatRegister::Half(start)),
+                Register::FloatReg(FloatRegister::Half(end)),
+            ) => {
+                for i in *start..=*end {
+                    registers.push(Register::FloatReg(FloatRegister::Half(i)));
+                }
+            }
+            (
+                Register::FloatReg(FloatRegister::Single(start)),
+                Register::FloatReg(FloatRegister::Single(end)),
+            ) => {
+                for i in *start..=*end {
+                    registers.push(Register::FloatReg(FloatRegister::Single(i)));
+                }
+            }
+            (
+                Register::FloatReg(FloatRegister::Double(start)),
+                Register::FloatReg(FloatRegister::Double(end)),
+            ) => {
+                for i in *start..=*end {
+                    registers.push(Register::FloatReg(FloatRegister::Double(i)));
+                }
+            }
+
+            _ => {
+                todo!()
+            }
+        }
+        Ok(RegisterList { registers })
     }
 }

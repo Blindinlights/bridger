@@ -21,7 +21,7 @@ register_item  = { register_range | register }
 register_range = { register ~ "-" ~ register }
 
 indirect = { "[" ~ register ~ ("," ~ offset)? ~ "]" }
-offset   = { immediate | proc_load | register | shifted_register }
+offset   = { immediate | proc_load | shifted_register | register }
 
 immediate = @{ ("#"? ~ imm_value) }
 address   =  { "=" ~ imm_value }
@@ -40,8 +40,7 @@ identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
 opcode     = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
 
 proc_load =  { (":" | "#:") ~ mode ~ ":" ~ label_target }
-mode      = @{ ASCII_ALPHA+ }
-
+mode      = @{ identifier }
 // Registers
 register = { half_reg | full_reg | float_reg }
 
