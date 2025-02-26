@@ -21,7 +21,7 @@ impl Register {
         Self { reg_type, reg_num }
     }
 }
-impl Parse for Register {
+impl Parse<'_> for Register {
     fn parse(pair: pest::iterators::Pair<crate::Rule>) -> Result<Self, crate::Err>
     where
         Self: Sized,

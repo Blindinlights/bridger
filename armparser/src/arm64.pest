@@ -1,8 +1,7 @@
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
 COMMENT    = _{ (";" ~ (!NEWLINE ~ ANY)*) | ("//" ~ (!NEWLINE ~ ANY)*) }
-
-// Main Rules
-line = { SOI ~ (directive | label | operation)? ~ EOI }
+file = { SOI ~ line* ~ EOI }
+line = { (directive | label | operation) }
 
 label = { identifier ~ ":" }
 

@@ -3,7 +3,7 @@ use expect_test::{expect, Expect};
 use pest::Parser;
 use register::*;
 use std::fmt::Debug;
-fn parse_fomat<N: Parse + Debug>(input: &[&str], rule: Rule, expect: Expect) {
+fn parse_format<'a, N: Parse<'a> + Debug>(input: &[&'a str], rule: Rule, expect: Expect) {
     let res = input
         .into_iter()
         .map(|l| {
@@ -28,7 +28,12 @@ fn check_regs(input: &[&str], expect: &[Register]) {
         .collect::<Vec<Register>>();
     assert_eq!(res, expect);
 }
-
+fn parse_src(src: &str) {
+    let res = parse_asm(src).unwrap();
+    res.into_iter().for_each(|l| {
+        println!("{:?}\n", l);
+    });
+}
 #[test]
 fn general_register() {
     check_regs(
@@ -77,7 +82,7 @@ fn float_register() {
 }
 #[test]
 fn immediate() {
-    parse_fomat::<Immediate>(
+    parse_format::<Immediate>(
         &["#0", "#0x0", "-1", "0x12345678", "0xABCDEF"],
         Rule::immediate,
         expect![[r#"
@@ -91,7 +96,7 @@ fn immediate() {
 }
 #[test]
 fn shift_type() {
-    parse_fomat::<ShiftType>(
+    parse_format::<ShiftType>(
         &["lsl", "lsr", "asr", "ror"],
         Rule::shift_type,
         expect![[r#"
@@ -104,7 +109,7 @@ fn shift_type() {
 }
 #[test]
 fn shift_reg() {
-    parse_fomat::<ShiftedRegister>(
+    parse_format::<ShiftedRegister>(
         &[
             "x0 lsl #0",
             "w0 lsr #0",
@@ -124,7 +129,7 @@ fn shift_reg() {
 }
 #[test]
 fn indirect() {
-    parse_fomat::<Indirect>(
+    parse_format::<Indirect>(
         &[
             "[x0]",
             "[x0, #0]",
@@ -190,7 +195,7 @@ fn reg_list() {
 
 #[test]
 fn opcode() {
-    parse_fomat::<Opcode>(
+    parse_format::<Opcode>(
         &["add", "sub", "mul", "div", "mov", "load", "store", "jmp"],
         Rule::opcode,
         expect![[r#"
@@ -207,7 +212,7 @@ fn opcode() {
 }
 #[test]
 fn instruction() {
-    parse_fomat::<Instruction>(
+    parse_format::<Instruction>(
         &[
             "add x0, x1, x2",
             "stp x29, x30, [sp, -48]!",
@@ -222,4 +227,11 @@ fn instruction() {
             Instruction { opcode: Opcode("stp"), operands: [Register(Register { reg_type: Full, reg_num: 29 }), Register(Register { reg_type: Full, reg_num: 30 }), Indirect(Indirect { base: Register { reg_type: Full, reg_num: 31 }, offset: Some(Immediate(Immediate(-48))), writeback: true })] }
             "#]],
     );
+}
+#[test]
+fn parse_asms() {
+    let input = r#"add x0,x1,x3
+        std x29,x30, [sp,-48]!
+        add x0,x0,:lo12:.LC2"#;
+    parse_src(&input);
 }

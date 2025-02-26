@@ -3,6 +3,7 @@ name = "bridger"
 version = "0.1.0"
 edition = "2021"
 [workspace]
-members = ["armparser"]
+members = [ "armparser", "asm-inst"]
 [dependencies]
-expect-test = "1.5.1"
+armparser = { path = "armparser" }
+asm-inst = { path = "asm-inst" }

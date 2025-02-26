@@ -3,15 +3,23 @@ pub mod opcode;
 pub mod register;
 #[cfg(test)]
 pub mod tests;
+use error::ArmParserError;
 use opcode::{Opcode, OPCODES};
+use pest::Parser;
 use pest_derive::Parser;
 use register::Register;
+
+pub fn parse_asm<'i>(src: &'i str) -> Result<Vec<Line<'i>>, ArmParserError> {
+    let res = ARM64Parser::parse(Rule::line, &src)?;
+    let res = res.map(|p| {
+        println!("{}\n", p.as_str());
+    });
+    todo!();
+}
 
 #[derive(Parser)]
 #[grammar = "arm64.pest"] // 使用前面定义的pest语法文件
 pub struct ARM64Parser;
-
-// 基础数据类型定义
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShiftType {
@@ -55,60 +63,60 @@ pub struct RegisterRange {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Indirect {
+pub struct Indirect<'a> {
     base: Register,
-    offset: Option<Offset>,
+    offset: Option<Offset<'a>>,
     writeback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Offset {
+pub enum Offset<'a> {
     Immediate(Immediate),
     Register(Register),
     ShiftedRegister(ShiftedRegister),
-    ProcLoad(ProcLoad),
+    ProcLoad(ProcLoad<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProcLoad {
-    mode: String,
-    target: String,
+pub struct ProcLoad<'a> {
+    mode: &'a str,
+    target: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Operand {
+pub enum Operand<'a> {
     Register(Register),
     Immediate(Immediate),
     Address(Immediate),
-    LabelTarget(String),
-    Indirect(Indirect),
+    LabelTarget(&'a str),
+    Indirect(Indirect<'a>),
     RegisterList(RegisterList),
     ShiftedRegister(ShiftedRegister),
-    ProcLoad(ProcLoad),
+    ProcLoad(ProcLoad<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Instruction {
+pub struct Instruction<'a> {
     opcode: Opcode,
-    operands: Vec<Operand>,
+    operands: Vec<Operand<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Line {
-    Label(String),
-    Directive(String),
-    Instruction(Instruction),
+pub enum Line<'a> {
+    Label(&'a str),
+    Directive(&'a str),
+    Instruction(Instruction<'a>),
 }
 type Err = crate::error::ArmParserError;
 impl ARM64Parser {}
 
-pub trait Parse {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err>
+pub trait Parse<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err>
     where
         Self: Sized;
 }
 
-impl Parse for Immediate {
+impl Parse<'_> for Immediate {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::immediate);
         fn parse_int(s: &str) -> Result<Immediate, Err> {
@@ -128,7 +136,7 @@ impl Parse for Immediate {
     }
 }
 
-impl Parse for ShiftType {
+impl Parse<'_> for ShiftType {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::shift_type);
         match pair.as_str() {
@@ -142,11 +150,11 @@ impl Parse for ShiftType {
     }
 }
 
-impl Parse for ShiftedRegister {
+impl Parse<'_> for ShiftedRegister {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::shifted_register);
         let mut inner = pair.into_inner();
-        let register = Register::parse(inner.next().expect("No inner pair"))?;
+        let reg = Register::parse(inner.next().expect("No inner pair"))?;
         let shift_type = ShiftType::parse(inner.next().expect("No inner pair"))?;
         let shift_amount = inner
             .next()
@@ -160,15 +168,15 @@ impl Parse for ShiftedRegister {
             })
             .transpose()?;
         Ok(ShiftedRegister {
-            reg: register,
+            reg,
             shift_type,
             shift_amount,
         })
     }
 }
 
-impl Parse for Offset {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+impl<'a> Parse<'a> for Offset<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::offset);
 
         let inner = pair.into_inner().next().expect("No inner pair");
@@ -182,8 +190,8 @@ impl Parse for Offset {
     }
 }
 
-impl Parse for Indirect {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+impl<'a> Parse<'a> for Indirect<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::indirect);
         let mut inner = pair.into_inner();
         let base = Register::parse(inner.next().expect("No inner pair"))?;
@@ -199,17 +207,17 @@ impl Parse for Indirect {
         })
     }
 }
-impl Parse for ProcLoad {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+impl<'a> Parse<'a> for ProcLoad<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::proc_load);
         let mut inner = pair.into_inner();
-        let mode = inner.next().expect("No inner pair").as_str().to_string();
-        let target = inner.next().expect("No inner pair").as_str().to_string();
+        let mode = inner.next().expect("No inner pair").as_str();
+        let target = inner.next().expect("No inner pair").as_str();
         Ok(ProcLoad { mode, target })
     }
 }
 
-impl Parse for RegisterList {
+impl Parse<'_> for RegisterList {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::reglist);
         let mut registers = Vec::with_capacity(30);
@@ -235,7 +243,7 @@ impl Parse for RegisterList {
     }
 }
 
-impl Parse for RegisterRange {
+impl Parse<'_> for RegisterRange {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::register_range);
         let mut inner = pair.into_inner();
@@ -245,15 +253,15 @@ impl Parse for RegisterRange {
     }
 }
 
-impl Parse for Operand {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+impl<'a> Parse<'a> for Operand<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::operand);
         let inner = pair.into_inner().next().expect("No inner pair");
         match inner.as_rule() {
             Rule::register => Ok(Operand::Register(Register::parse(inner)?)),
             Rule::immediate => Ok(Operand::Immediate(Immediate::parse(inner)?)),
             Rule::address => Ok(Operand::Address(Immediate::parse(inner)?)),
-            Rule::label_target => Ok(Operand::LabelTarget(inner.as_str().to_string())),
+            Rule::label_target => Ok(Operand::LabelTarget(inner.as_str())),
             Rule::indirect => Ok(Operand::Indirect(Indirect::parse(inner)?)),
             Rule::reglist => Ok(Operand::RegisterList(RegisterList::parse(inner)?)),
             Rule::shifted_register => Ok(Operand::ShiftedRegister(ShiftedRegister::parse(inner)?)),
@@ -262,7 +270,7 @@ impl Parse for Operand {
         }
     }
 }
-impl Parse for Opcode {
+impl Parse<'_> for Opcode {
     fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::opcode);
         let opcode = OPCODES.get(pair.as_str()).ok_or(Err::InvalidOpcode)?;
@@ -270,8 +278,8 @@ impl Parse for Opcode {
     }
 }
 
-impl Parse for Instruction {
-    fn parse(pair: pest::iterators::Pair<Rule>) -> Result<Self, Err> {
+impl<'a> Parse<'a> for Instruction<'a> {
+    fn parse(pair: pest::iterators::Pair<'a, Rule>) -> Result<Self, Err> {
         debug_assert_eq!(pair.as_rule(), Rule::operation);
         let mut inner = pair.into_inner();
         let opcode = Opcode::parse(inner.next().expect("No inner pair"))?;
@@ -279,6 +287,28 @@ impl Parse for Instruction {
             .map(|pair| -> Result<Operand, Err> { Ok(Operand::parse(pair)?) })
             .collect::<Result<Vec<Operand>, Err>>()?;
         Ok(Instruction { opcode, operands })
+    }
+}
+
+impl<'a, 'b> Parse<'b> for Line<'a>
+where
+    'b: 'a,
+{
+    fn parse(pair: pest::iterators::Pair<'b, Rule>) -> Result<Self, Err>
+    where
+        Self: Sized,
+    {
+        debug_assert_eq!(pair.as_rule(), Rule::line);
+        let inner = pair.into_inner().next().expect("No inner pair");
+        match inner.as_rule() {
+            Rule::directive => Ok(Line::Directive(inner.as_str())),
+            Rule::operation => Ok(Line::Instruction(Instruction::parse(inner)?)),
+            Rule::label => Ok(Line::Label(inner.as_str())),
+            r => {
+                println!("{:?}", r);
+                unreachable!("invalid Line")
+            }
+        }
     }
 }
 
