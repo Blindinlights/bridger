@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Opcode(pub &'static str);
 
 macro_rules! define_opcodes {
     ($($name:ident = $value:expr),* $(,)?) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub struct Opcode(pub &'static str);
-
         impl Opcode {
             $(
                 pub const $name: Opcode = Opcode($value);
@@ -36,12 +35,9 @@ define_opcodes! {
     LOAD = "load",
     STORE = "store",
     JMP = "jmp",
-
     STP = "stp",
-
     B = "b",
     BL = "bl",
-
     LI = "li",
     LDR = "ldr",
     STR = "str",

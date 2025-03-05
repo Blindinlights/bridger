@@ -11,9 +11,6 @@ use register::Register;
 
 pub fn parse_asm<'i>(src: &'i str) -> Result<Vec<Line<'i>>, ArmParserError> {
     let res = ARM64Parser::parse(Rule::line, &src)?;
-    let res = res.map(|p| {
-        println!("{}\n", p.as_str());
-    });
     todo!();
 }
 

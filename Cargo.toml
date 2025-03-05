@@ -7,3 +7,6 @@ members = [ "armparser", "asm-inst"]
 [dependencies]
 armparser = { path = "armparser" }
 asm-inst = { path = "asm-inst" }
+either = "1.14.0"
+phf = "0.11.3"
+smallvec = "1.14.0"
